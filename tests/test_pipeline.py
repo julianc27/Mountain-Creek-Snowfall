@@ -59,3 +59,42 @@ def test_in_season_model_beats_climatology(project):
 def test_predict_current_season(project):
     fc = predict.current_forecast(project["proc"], project["models"])
     assert len(fc) == 1 and 0 <= fc["p_above_median"].iloc[0] <= 1
+
+
+def test_model_has_version(project):
+    fc = predict.current_forecast(project["proc"], project["models"])
+    v = fc["model_version"].iloc[0]
+    assert isinstance(v, str) and len(v) == 12 and v != "unversioned"
+
+
+def test_forecast_log_is_append_only(tmp_path, project):
+    log = tmp_path / "forecast_log.csv"
+    fc = predict.current_forecast(project["proc"], project["models"])
+
+    first = predict.log_forecast(fc, log, issued_at=dt.datetime(2026, 11, 3, tzinfo=dt.timezone.utc))
+    assert first["checkpoint"].tolist() == ["Nov 1"]
+    snapshot = log.read_bytes()
+
+    # Re-running with revised numbers for an already-logged checkpoint must not touch the log.
+    revised = fc.assign(p_above_median=0.99)
+    assert predict.log_forecast(revised, log).empty
+    assert log.read_bytes() == snapshot
+
+    # A new checkpoint is appended; the original line stays byte-for-byte identical.
+    dec1 = fc.assign(checkpoint="Dec 1", p_above_median=0.42)
+    added = predict.log_forecast(pd.concat([revised, dec1]), log)
+    assert added["checkpoint"].tolist() == ["Dec 1"]
+    assert log.read_bytes().startswith(snapshot)
+
+    out = pd.read_csv(log).set_index("checkpoint")
+    assert out.loc["Nov 1", "p_above_median"] == pytest.approx(fc["p_above_median"].iloc[0])
+    assert out.loc["Nov 1", "issued_at"].startswith("2026-11-03")
+    assert out.loc["Dec 1", "p_above_median"] == pytest.approx(0.42)
+
+
+def test_train_refuses_to_replace_model_mid_season(tmp_path, project):
+    reports = tmp_path / "reports"
+    fc = predict.current_forecast(project["proc"], project["models"])
+    predict.log_forecast(fc, reports / train.FORECAST_LOG)
+    with pytest.raises(RuntimeError, match="--force"):
+        train.main(project["proc"], tmp_path / "models", reports)

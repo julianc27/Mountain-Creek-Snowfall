@@ -10,10 +10,14 @@ Brier Skill Score (BSS) = 1 - Brier(model) / Brier(climatology):
     BSS = 0  -> no better
     BSS < 0  -> worse (overfitting!)
 
-Usage:  python -m src.train
+Usage:  python -m src.train            (refuses to replace a model that live forecasts were issued with)
+        python -m src.train --force    (retrain anyway - only do this between seasons)
 """
 from __future__ import annotations
 
+import argparse
+import datetime as dt
+import hashlib
 from pathlib import Path
 
 import joblib
@@ -37,6 +41,7 @@ MODELS = {
     "full": CLIMATE_FEATURES + SNOW_FEATURES,
 }
 MIN_SEASONS = 12
+FORECAST_LOG = "forecast_log.csv"  # append-only record of live forecasts (written by predict.py)
 
 
 def make_classifier():
@@ -121,12 +126,47 @@ def plot_skill(results: pd.DataFrame, path: Path) -> None:
     plt.close(fig)
 
 
+def model_version(data: pd.DataFrame, target: str) -> str:
+    """Short, deterministic ID for a trained model: same training data + settings -> same version."""
+    h = hashlib.sha256()
+    h.update(target.encode())
+    h.update(repr(sorted(MODELS.items())).encode())
+    h.update(repr((make_classifier(), make_regressor())).encode())
+    h.update(data.sort_values(["season", "checkpoint"]).to_csv(index=False).encode())
+    return h.hexdigest()[:12]
+
+
+def check_model_not_frozen(seasons: pd.DataFrame, reports_dir: Path) -> None:
+    """Live forecasts for the season in progress must all come from the same model.
+
+    Once anything is in the forecast log for that season, retraining would mean later forecasts come from
+    a different model than earlier ones, so we stop unless the user explicitly forces it.
+    """
+    log_path = reports_dir / FORECAST_LOG
+    live = seasons.loc[seasons["in_progress"], "season"]
+    if not log_path.exists() or live.empty:
+        return
+    log = pd.read_csv(log_path)
+    issued = log[log["season_start"] == int(live.iloc[0])]
+    if not issued.empty:
+        versions = ", ".join(sorted(issued["model_version"].astype(str).unique()))
+        raise RuntimeError(
+            f"{len(issued)} live forecast(s) for the season in progress were already issued with model "
+            f"{versions} (see {log_path.name}). Retraining now would change the model mid-season.\n"
+            "If you really mean to, run:  python -m src.train --force"
+        )
+
+
+
 def main(processed_dir: Path = config.PROCESSED_DIR, models_dir: Path = config.MODELS_DIR,
-         reports_dir: Path = config.REPORTS_DIR) -> pd.DataFrame:
+         reports_dir: Path = config.REPORTS_DIR, force: bool = False) -> pd.DataFrame:
     target = config.TARGET
     seasons = pd.read_csv(processed_dir / "seasons.csv")
     features = pd.read_csv(processed_dir / "features.csv")
+    if not force:
+        check_model_not_frozen(seasons, reports_dir)
     data = features.merge(seasons[["season", target]], on="season").dropna(subset=[target])
+    version = model_version(data, target)
 
     models_dir.mkdir(parents=True, exist_ok=True)
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -156,7 +196,9 @@ def main(processed_dir: Path = config.PROCESSED_DIR, models_dir: Path = config.M
     results = pd.DataFrame(results)
     results.to_csv(reports_dir / "cv_results.csv", index=False)
     pd.concat(all_preds).to_csv(reports_dir / "cv_predictions.csv", index=False)
-    joblib.dump({"target": target, "models": final}, models_dir / "models.joblib")
+    joblib.dump({"target": target, "models": final, "version": version,
+                 "trained_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")},
+                models_dir / "models.joblib")
     plot_skill(results, reports_dir / "skill_by_checkpoint.png")
 
     pd.set_option("display.width", 140)
@@ -164,10 +206,14 @@ def main(processed_dir: Path = config.PROCESSED_DIR, models_dir: Path = config.M
                     "hit_rate", "mae_model_in", "mae_climatology_in"]]
     print(f"\nTarget: {target} above median   (leave-one-season-out cross-validation)\n")
     print(show.round(3).to_string(index=False))
-    print(f"\nSaved reports/cv_results.csv, reports/skill_by_checkpoint.png, models/models.joblib")
+    print(f"\nModel version {version}")
+    print(f"Saved reports/cv_results.csv, reports/skill_by_checkpoint.png, models/models.joblib")
     print("Next: python -m src.predict   or   streamlit run app.py")
     return results
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--force", action="store_true",
+                        help="retrain even if live forecasts were already issued this season")
+    main(force=parser.parse_args().force)

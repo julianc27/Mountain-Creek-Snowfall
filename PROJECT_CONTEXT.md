@@ -5,7 +5,8 @@ Resume project: a probabilistic forecaster for whether the snowboarding season a
 Run from VS Code's terminal inside a `.venv`, always using `python -m src.<module>` (never the ▶️ Run button).
 
 ## Status
-- Pipeline built and tested end to end on synthetic data (7 pytest tests pass).
+- Pipeline built and tested end to end on synthetic data (10 pytest tests pass).
+- Live-forecast integrity: models carry a version hash; train.py refuses to retrain mid-season (--force overrides).
 - Not yet run on real NOAA data. Next step: run fetch_data → build_dataset → train, then fill in README results.
 
 ## Design decisions
@@ -27,7 +28,8 @@ Run from VS Code's terminal inside a `.venv`, always using `python -m src.<modul
 - src/fetch_data.py: station discovery + downloads (NOAA NCEI + CPC)
 - src/build_dataset.py: outputs data/processed/seasons.csv, features.csv, daily.csv
 - src/train.py: outputs reports/cv_results.csv, cv_predictions.csv, skill_by_checkpoint.png, models/models.joblib
-- src/predict.py: current-season forecast (reports/current_forecast.csv)
+- src/predict.py: current-season forecast (reports/current_forecast.csv, recomputed each run) and the
+  append-only live record reports/forecast_log.csv (one row per checkpoint, never rewritten, tagged with model_version)
 - app.py: Streamlit dashboard
 - tests/: synthetic NOAA-format data generator + end-to-end tests
 

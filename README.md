@@ -62,6 +62,11 @@ python -m pytest -q           # end-to-end tests on synthetic data (no internet 
 
 During the season, re-run `fetch_data → build_dataset → predict` to update the forecast with new observations.
 
+Each checkpoint's forecast is appended to `reports/forecast_log.csv` the first time it is issued and never
+rewritten, together with the model version that produced it. That file is the live record used to score the
+season in April. Once a forecast is logged for the current season, `python -m src.train` refuses to replace the
+model (use `--force` only between seasons), so every live forecast in a season comes from the same frozen model.
+
 ## Project structure
 
 ```
