@@ -30,8 +30,19 @@ only information that was actually available on that date.
 
 1. **Station blending.** The station with the most complete record is primary. Seasons it missed are filled from
    the nearest neighbour, rescaled by the median ratio between the two stations (they sit at different elevations).
-2. **Features at each checkpoint:** snow since Oct 1, snow-on-ground days, snowmaking nights, temperature
-   anomaly, latest ONI, recent NAO/AO.
+2. **Features at each checkpoint.** Each one uses only data from before the checkpoint date:
+
+   | Feature | Definition | Why it matters |
+   |---|---|---|
+   | Snow to date | Total snowfall since Oct 1 (in) | Snowy starts tend to become snowy seasons |
+   | Snow-on-ground days | Days since Oct 1 with ≥1" snow depth | Snow that sticks around signals a lasting cold pattern |
+   | Snowmaking nights | Nights since Oct 1 with a low ≤25°F | Mountain Creek depends on making snow |
+   | Temperature anomaly | Mean daily temperature vs. that station's normal for the date (°F) | Colder than normal so far |
+   | ONI | Latest El Niño / La Niña index | Pacific pattern that shifts winter storm tracks |
+   | NAO, AO | Mean of the last 2 months | Negative phases favour cold, stormy Northeast winters |
+
+   A station series with more than 15% missing days is left blank (filled with the training median) rather
+   than counted as zero. Features that are nearly constant at a checkpoint (e.g. snow depth on Nov 1) are dropped.
 3. **Models:** regularized logistic regression (probability of an above-median season) and ridge regression
    (expected total). There are two variants: *climate indices only* and *full* (indices plus season-to-date
    observations).
@@ -86,3 +97,7 @@ tests/                synthetic NOAA-format data + end-to-end tests
 - Natural snowfall at a valley station is not the same as conditions on the slopes, and Mountain Creek relies
   heavily on snowmaking.
 - Climate indices have only a modest, region-dependent effect on Northeast winters.
+- The models are linear, so they can't capture combined effects (e.g. El Niño *and* a negative NAO). That's a
+  deliberate trade-off: with about 50 seasons, a more flexible model would overfit.
+- The backtest treats each monthly climate index as available on the 1st of the following month. In practice
+  NOAA publishes it a few days later, so the cross-validated skill at early checkpoints may be slightly optimistic.
