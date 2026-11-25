@@ -38,9 +38,8 @@ REPORTS_DIR = ROOT / "reports"
 # --- Data sources (all free, public NOAA data) ------------------------------
 GHCN_STATIONS_URL = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt"
 GHCN_INVENTORY_URL = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-inventory.txt"
-GHCN_STATION_CSV_URL = (
-    "https://www.ncei.noaa.gov/data/global-historical-climatology-network/daily/access/{station_id}.csv"
-)
+# Long format, one row per (date, element). NOAA removed the older wide-format ".../daily/access/" files in 2026.
+GHCN_STATION_CSV_URL = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/by_station/{station_id}.csv.gz"
 ONI_URL = "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt"
 NAO_URL = "https://www.cpc.ncep.noaa.gov/products/precip/CWlink/pna/norm.nao.monthly.b5001.current.ascii"
 AO_URL = "https://www.cpc.ncep.noaa.gov/products/precip/CWlink/daily_ao_index/monthly.ao.index.b50.current.ascii"

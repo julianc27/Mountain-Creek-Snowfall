@@ -42,6 +42,32 @@ def download(url: str, dest: Path, force: bool = False, retries: int = 3) -> Pat
     raise RuntimeError(f"Could not download {url}")
 
 
+ELEMENTS = ["SNOW", "SNWD", "TMAX", "TMIN", "PRCP"]
+LONG_COLUMNS = ["ID", "DATE", "ELEMENT", "VALUE", "M_FLAG", "Q_FLAG", "S_FLAG", "OBS_TIME"]
+
+
+def ghcn_long_to_wide(src: Path, dest: Path) -> Path:
+    """Convert a GHCN-Daily by_station file (one row per date and element, no header) to one row per date.
+
+    The output has STATION, DATE and, per element, a value column plus an '<ELEMENT>_ATTRIBUTES' column
+    ('mflag,qflag,sflag,time'), which is the layout build_dataset.load_station reads.
+    """
+    long = pd.read_csv(src, header=None, names=LONG_COLUMNS, dtype=str, keep_default_na=False)
+    long = long[long["ELEMENT"].isin(ELEMENTS)]
+    long["DATE"] = pd.to_datetime(long["DATE"], format="%Y%m%d").dt.strftime("%Y-%m-%d")
+    long["ATTRIBUTES"] = long["M_FLAG"] + "," + long["Q_FLAG"] + "," + long["S_FLAG"] + "," + long["OBS_TIME"]
+    long = long.drop_duplicates(["DATE", "ELEMENT"], keep="last")
+
+    wide = long.pivot(index="DATE", columns="ELEMENT", values=["VALUE", "ATTRIBUTES"])
+    out = pd.DataFrame(index=wide.index)
+    for el in [e for e in ELEMENTS if ("VALUE", e) in wide.columns]:
+        out[el] = pd.to_numeric(wide[("VALUE", el)], errors="coerce")
+        out[f"{el}_ATTRIBUTES"] = wide[("ATTRIBUTES", el)]
+    out.insert(0, "STATION", long["ID"].iloc[0] if len(long) else "")
+    out.reset_index().sort_values("DATE").to_csv(dest, index=False)
+    return dest
+
+
 def haversine_km(lat1, lon1, lat2, lon2):
     r = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -95,7 +121,9 @@ def main(force: bool = False) -> None:
 
     print("\n2/3  Daily station histories (re-downloaded every run so the current season stays fresh)")
     for sid in chosen["station_id"]:
-        download(config.GHCN_STATION_CSV_URL.format(station_id=sid), raw / "ghcn" / f"{sid}.csv", force=True)
+        gz = download(config.GHCN_STATION_CSV_URL.format(station_id=sid), raw / "ghcn" / f"{sid}.csv.gz",
+                      force=True)
+        ghcn_long_to_wide(gz, raw / "ghcn" / f"{sid}.csv")
 
     print("\n3/3  Climate indices")
     download(config.ONI_URL, raw / "oni.txt", force=True)

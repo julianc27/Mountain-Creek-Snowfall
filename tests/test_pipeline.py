@@ -98,3 +98,26 @@ def test_train_refuses_to_replace_model_mid_season(tmp_path, project):
     predict.log_forecast(fc, reports / train.FORECAST_LOG)
     with pytest.raises(RuntimeError, match="--force"):
         train.main(project["proc"], tmp_path / "models", reports)
+
+
+def test_by_station_long_format_converted_for_loader(tmp_path):
+    """NOAA's by_station files are long format (one row per element); convert to the loader's wide layout."""
+    from src.fetch_data import ghcn_long_to_wide
+
+    long_csv = (
+        "USC00000001,20240105,SNOW,51,,,7,0700\n"
+        "USC00000001,20240105,TMAX,-50,,,7,0700\n"
+        "USC00000001,20240105,PRCP,10,,,7,0700\n"
+        "USC00000001,20240106,SNOW,999,,X,7,0700\n"   # failed quality check
+        "USC00000001,20240106,TMIN,-100,,,7,\n"
+    )
+    src = tmp_path / "long.csv"
+    src.write_text(long_csv)
+    dest = tmp_path / "wide.csv"
+    ghcn_long_to_wide(src, dest)
+
+    daily = build_dataset.load_station(dest)
+    assert daily.loc["2024-01-05", "snow_in"] == pytest.approx(51 / 25.4)
+    assert daily.loc["2024-01-05", "tmax_f"] == pytest.approx(23.0)
+    assert pd.isna(daily.loc["2024-01-06", "snow_in"])           # QC-failed value masked
+    assert daily.loc["2024-01-06", "tmin_f"] == pytest.approx(14.0)
