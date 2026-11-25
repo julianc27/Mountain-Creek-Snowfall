@@ -5,9 +5,12 @@ Resume project: a probabilistic forecaster for whether the snowboarding season a
 Run from VS Code's terminal inside a `.venv`, always using `python -m src.<module>` (never the ▶️ Run button).
 
 ## Status
-- Pipeline built and tested end to end on synthetic data (10 pytest tests pass).
+- Pipeline tested end to end on synthetic data (12 pytest tests pass).
 - Live-forecast integrity: models carry a version hash; train.py refuses to retrain mid-season (--force overrides).
-- Not yet run on real NOAA data. Next step: run fetch_data → build_dataset → train, then fill in README results.
+- Trained on real NOAA data (2026-11-24): 76 seasons 1950–2025 (FIRST_TRAIN_SEASON; indices start 1950).
+  Full model has no skill through Dec 15; Brier skill 0.18 / 0.20 / 0.30 at Jan 1 / Jan 15 / Feb 1. Results in README.
+- Station data now comes from NOAA's by_station .csv.gz files (the old /daily/access/ files were removed in 2026).
+- Next: run predict to log the first live forecasts; score the season in April 2027.
 
 ## Design decisions
 - Target (config.TARGET): `snowfall_in` (Nov 1–Apr 30 total). Alternatives: `depth_days`, `snowmaking_nights`

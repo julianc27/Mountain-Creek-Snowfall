@@ -166,6 +166,7 @@ def main(processed_dir: Path = config.PROCESSED_DIR, models_dir: Path = config.M
     if not force:
         check_model_not_frozen(seasons, reports_dir)
     data = features.merge(seasons[["season", target]], on="season").dropna(subset=[target])
+    data = data[data["season"] >= config.FIRST_TRAIN_SEASON].reset_index(drop=True)
     version = model_version(data, target)
 
     models_dir.mkdir(parents=True, exist_ok=True)

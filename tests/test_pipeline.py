@@ -121,3 +121,12 @@ def test_by_station_long_format_converted_for_loader(tmp_path):
     assert daily.loc["2024-01-05", "tmax_f"] == pytest.approx(23.0)
     assert pd.isna(daily.loc["2024-01-06", "snow_in"])           # QC-failed value masked
     assert daily.loc["2024-01-06", "tmin_f"] == pytest.approx(14.0)
+
+
+def test_train_skips_seasons_before_first_train_season(tmp_path, project, monkeypatch):
+    """Seasons before the climate-index record starts are left out of training and evaluation."""
+    monkeypatch.setattr(config, "FIRST_TRAIN_SEASON", 1975)
+    results = train.main(project["proc"], tmp_path / "models", tmp_path / "reports")
+    seasons = pd.read_csv(project["proc"] / "seasons.csv")
+    expected = len(seasons[seasons["season"] >= 1975].dropna(subset=[config.TARGET]))
+    assert (results["n_seasons"] == expected).all()
