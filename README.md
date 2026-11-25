@@ -1,10 +1,11 @@
 # 🏂 Mountain Creek Season Forecaster
 
 **Will this winter be a good one at Mountain Creek (Vernon, NJ)?** This project gives a probabilistic answer
-built from 50+ years of NOAA weather-station records and large-scale climate patterns. It forecasts before
-the season starts and updates as the winter goes on.
+built from 76 winters (1950–2025) of NOAA weather-station records and large-scale climate patterns. It forecasts
+before the season starts and updates as the winter goes on.
 
-> Status: pipeline complete and tested; results below get filled in after the first real-data run.
+> Status: trained and evaluated on real NOAA data; live forecasts for the 2026–27 season are logged in
+> `reports/forecast_log.csv` and will be scored in April 2027.
 
 ## The question
 
@@ -28,9 +29,12 @@ only information that was actually available on that date.
 
 ## Method
 
-1. **Station blending.** The station with the most complete record is primary. Seasons it missed are filled from
+1. **Training window.** The station records go back to 1893 (129 complete seasons), but the ONI, NAO and AO
+   records start in 1950. Models are trained and evaluated only on seasons from 1950 on (`FIRST_TRAIN_SEASON`
+   in `src/config.py`), so every season has real climate-index values instead of imputed ones.
+2. **Station blending.** The station with the most complete record is primary. Seasons it missed are filled from
    the nearest neighbour, rescaled by the median ratio between the two stations (they sit at different elevations).
-2. **Features at each checkpoint.** Each one uses only data from before the checkpoint date:
+3. **Features at each checkpoint.** Each one uses only data from before the checkpoint date:
 
    | Feature | Definition | Why it matters |
    |---|---|---|
@@ -43,18 +47,35 @@ only information that was actually available on that date.
 
    A station series with more than 15% missing days is left blank (filled with the training median) rather
    than counted as zero. Features that are nearly constant at a checkpoint (e.g. snow depth on Nov 1) are dropped.
-3. **Models:** regularized logistic regression (probability of an above-median season) and ridge regression
+4. **Models:** regularized logistic regression (probability of an above-median season) and ridge regression
    (expected total). There are two variants: *climate indices only* and *full* (indices plus season-to-date
    observations).
-4. **Evaluation:** leave-one-season-out cross-validation. The median threshold is recomputed inside each
+5. **Evaluation:** leave-one-season-out cross-validation. The median threshold is recomputed inside each
    fold to avoid leakage. Skill is reported as the **Brier Skill Score vs. climatology** (always guessing the
    base rate), with 90% bootstrap confidence intervals.
 
 ## Results
 
-_Run the pipeline, then paste in `reports/skill_by_checkpoint.png` and the key numbers from `reports/cv_results.csv`._
+Leave-one-season-out cross-validation over 76 seasons (1950–2025), target = total snowfall above the median.
+Baseline ("climatology") always predicts the base rate and the historical average.
 
 ![skill](reports/skill_by_checkpoint.png)
+
+| Checkpoint | Brier skill score, full model (90% CI) | Above/below median correct | Mean abs. error, model vs. baseline |
+|---|---|---|---|
+| Nov 1 | -0.02 (-0.14 to 0.08) | 59% | 14.8 vs 14.9 in |
+| Dec 1 | -0.03 (-0.13 to 0.07) | 54% | 15.5 vs 14.9 in |
+| Dec 15 | 0.00 (-0.13 to 0.12) | 58% | 14.6 vs 14.9 in |
+| **Jan 1** | **0.18 (0.02 to 0.33)** | **72%** | **11.8 vs 14.9 in** |
+| **Jan 15** | **0.20 (0.04 to 0.36)** | **74%** | **12.1 vs 14.9 in** |
+| **Feb 1** | **0.30 (0.13 to 0.46)** | **72%** | **10.4 vs 14.9 in** |
+
+- **No skill before January.** Through Dec 15, neither model beats climatology. The climate indices alone carry
+  too little signal for Northeast snowfall this early, which is consistent with the limitations below.
+- **Real skill from Jan 1 on.** Once a month or two of the season has been observed, the full model's 90% interval
+  stays above zero. By Feb 1 it cuts the snowfall error by 30% (10.4 vs 14.9 in).
+- **Season-to-date observations matter more than the indices.** The full model beats the climate-indices-only
+  model at every checkpoint from Jan 1 on (Jan 1: 0.18 vs 0.07).
 
 ## Run it
 
@@ -92,12 +113,12 @@ tests/                synthetic NOAA-format data + end-to-end tests
 
 ## Limitations
 
-- Only a few dozen seasons are available, so any skill estimate has wide error bars. That's why the
+- Only 76 seasons have climate-index data, so any skill estimate has wide error bars. That's why the
   confidence intervals are reported.
 - Natural snowfall at a valley station is not the same as conditions on the slopes, and Mountain Creek relies
   heavily on snowmaking.
 - Climate indices have only a modest, region-dependent effect on Northeast winters.
 - The models are linear, so they can't capture combined effects (e.g. El Niño *and* a negative NAO). That's a
-  deliberate trade-off: with about 50 seasons, a more flexible model would overfit.
+  deliberate trade-off: with 76 seasons, a more flexible model would overfit.
 - The backtest treats each monthly climate index as available on the 1st of the following month. In practice
   NOAA publishes it a few days later, so the cross-validated skill at early checkpoints may be slightly optimistic.

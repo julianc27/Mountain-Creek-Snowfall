@@ -24,6 +24,10 @@ SNOWMAKING_TMIN_F = 25.0     # nights at/below this temp count as good snowmakin
 # Forecast checkpoints (month, day). The model only sees data available before each date.
 CHECKPOINTS = [(11, 1), (12, 1), (12, 15), (1, 1), (1, 15), (2, 1)]
 
+# Train and evaluate only on seasons from this year on. The ONI, NAO and AO records start in 1950,
+# so earlier seasons would have no climate-index data (they would only see imputed medians).
+FIRST_TRAIN_SEASON = 1950
+
 # What counts as a "good season"? Options: "snowfall_in", "depth_days", "snowmaking_nights"
 TARGET = "snowfall_in"
 
